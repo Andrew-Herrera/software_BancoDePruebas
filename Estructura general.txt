@@ -1,0 +1,24 @@
+TT_software/
+├── main.py                   # Lanzador de la aplicación y orquestador principal
+├── data/                     # Datos
+│   └── solar_project.db      # Base de datos SQLite
+│   └── config.json           # Preferencias de usuario
+├── presentation/             # Capa de Presentación (Solo GUI)
+│   ├── main_window.py        # Ventana principal
+│   ├── config_dialog.py      # Interfaz de configuración
+│   ├── export_dialog.py      # Interfaz de exportación
+│   ├── curves_dialog.py      # Interfaz del gestor de curvas
+│   ├── touch_keyboard.py     # Interfaz de teclado
+│   └── comparison_dialog.py  # Interfaz de comparador
+├── logic/                    # Capa de Lógica de Negocio
+│   ├── solar_controller.py   # Controlador (el "cerebro" que une todo)
+│   ├── instrument_worker.py  # Hilo de adquisición y smart_sleep     
+│   └── pv_analytics.py       # Algoritmos matemáticos y figuras de mérito
+├── hardware/                 # Capa de Instrumentación
+│   └── keithley_driver.py    # Driver PyVISA
+├── storage/                  # Capa de Persistencia
+│   ├── database_manager.py   # Gestor SQL
+│   └── file_manager.py       # Manejo de JSON y CSV
+└── utils/                    # Capa de Utilidades
+    ├── styles.py             # Hojas de estilo QSS
+    └── texts.py              # Diccionarios de internacionalización (ES/EN)
