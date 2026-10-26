@@ -6,14 +6,14 @@
     "compliance": 0.05,
     "nplc": 1.0,
     "hysteresis": false,
-    "last_irr": 1000.0,
+    "last_irr": 500.0,
     "n_sweeps": 1,
     "int_sweeps": 5.0,
     "dur_hrs": 1.0,
     "b_per_hr": 10,
     "v_bias": 0.0,
-    "demo_mode": true,
-    "gpib_id": "120",
+    "demo_mode": false,
+    "gpib_id": "24",
     "baud": "9600",
     "termination": "\\r\\n",
     "term_route": "Front (FRONT)",
@@ -26,5 +26,6 @@
     "lang": "Español",
     "dark_mode": true,
     "touch_mode": true,
-    "last_author": "andrew_herrera"
+    "last_author": "andrew_herrera",
+    "z_focus": 0
 }

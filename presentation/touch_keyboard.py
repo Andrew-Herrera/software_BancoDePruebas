@@ -1,5 +1,8 @@
 # presentation/touch_keyboard.py
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QGridLayout, QHBoxLayout, QPushButton, QLineEdit
+from PySide6.QtWidgets import (
+    QDialog, QVBoxLayout, QGridLayout, QHBoxLayout, 
+    QPushButton, QLineEdit, QCompleter
+)
 from PySide6.QtCore import Qt
 
 class TouchKeyboard(QDialog):
@@ -31,8 +34,44 @@ class TouchKeyboard(QDialog):
                 self.display.setText(self.target_widget.text())
             elif hasattr(self.target_widget, 'toPlainText'):
                 self.display.setText(self.target_widget.toPlainText())
-        
-        self.display.setStyleSheet("font-size: 22px; font-weight: bold; padding: 10px; border: 2px solid #1565C0; border-radius: 6px;")
+                
+            self.display.setStyleSheet("font-size: 20px; font-weight: bold; padding: 10px; border: 2px solid #1565C0; border-radius: 6px;")
+            
+            # --- Autocompletado táctil independiente ---
+            if hasattr(self.target_widget, 'completer') and self.target_widget.completer():
+                orig_completer = self.target_widget.completer()
+                
+                # Clonar el modelo de datos para el teclado
+                kb_completer = QCompleter(orig_completer.model(), self)
+                kb_completer.setCaseSensitivity(orig_completer.caseSensitivity())
+                
+                # Agrandar el menú desplegable para pantallas táctiles de 7"
+                popup = kb_completer.popup()
+                popup.setStyleSheet("""
+                    QAbstractItemView {
+                        font-size: 20px; 
+                        background-color: white; 
+                        color: black;
+                    }
+                    QAbstractItemView::item {
+                        min-height: 15px; /* Filas mucho más altas */
+                        padding: 10px;
+                        border-bottom: 1px solid #e0e0e0;
+                    }
+                    QAbstractItemView::item:selected {
+                        background-color: #1976D2;
+                        color: white;
+                    }
+                """)
+                
+                # Forzar escritura y cierre automático al seleccionar una opción
+                def on_autocomplete_selected(text):
+                    self.display.setText(text)
+                    self._accept_and_update_target()
+                    
+                kb_completer.activated.connect(on_autocomplete_selected)
+                self.display.setCompleter(kb_completer)
+
         main_layout.addWidget(self.display)
         
         # --- Construcción Dinámica ---
@@ -45,6 +84,7 @@ class TouchKeyboard(QDialog):
         grid = QGridLayout()
         grid.setSpacing(6)
         keys = [['7', '8', '9'], ['4', '5', '6'], ['1', '2', '3'], ['.', '0', '-']]
+        
         for row_idx, row in enumerate(keys):
             for col_idx, key in enumerate(row):
                 btn = QPushButton(key)
@@ -62,7 +102,7 @@ class TouchKeyboard(QDialog):
         btn_acc.setFixedHeight(55)
         btn_acc.setStyleSheet("background-color: #2E7D32; color: white; font-weight: bold; font-size: 16px; border-radius: 5px;")
         btn_acc.clicked.connect(self._accept_and_update_target)
-
+        
         grid.addWidget(btn_del, 4, 0, 1, 1)
         grid.addWidget(btn_acc, 4, 1, 1, 2)
         return grid
@@ -76,6 +116,7 @@ class TouchKeyboard(QDialog):
             ['A','S','D','F','G','H','J','K','L','Ñ'],
             ['Z','X','C','V','B','N','M','_','-','.']
         ]
+        
         for row in keys:
             h_layout = QHBoxLayout()
             h_layout.setSpacing(4)
@@ -88,6 +129,7 @@ class TouchKeyboard(QDialog):
             layout.addLayout(h_layout)
             
         btn_layout = QHBoxLayout()
+        
         btn_del = QPushButton("Borrar")
         btn_del.setFixedHeight(55)
         btn_del.setStyleSheet("background-color: #D32F2F; color: white; font-weight: bold; font-size: 16px; border-radius: 5px;")

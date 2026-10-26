@@ -47,11 +47,16 @@ class StyleManager:
             """
 
         if touch_mode:
-            # Se han removido las restricciones de tamaño forzado para QLineEdit y QComboBox
             touch_style = """
-                QCheckBox::indicator { width: 22px; height: 22px; }
-                QTabBar::tab { padding: 10px 20px; font-size: 14px; }
-                QTreeWidget::item { padding: 6px; }
+            QCheckBox::indicator { width: 25px; height: 25px; } /* Cuadro de selección mucho más grande */
+            QCheckBox { spacing: 12px; font-size: 16px; padding: 5px; } /* Espacio entre el cuadro y el texto */
+            
+            QTreeView::indicator { width: 25px; height: 25px; } /* Afecta al Historial SQL y Gestor de Curvas */
+            QTreeWidget::item { padding: 12px; font-size: 14px; } /* Filas más altas para fácil pulsación */
+            
+            QComboBox { min-height: 25px; font-size: 16px; padding-left: 10px; } /* Combobox de Exportación */
+            QComboBox QAbstractItemView::item { min-height: 25px; padding: 10px; font-size: 16px; } /* Lista desplegable grande */
+            
             """
             base_style += touch_style
 

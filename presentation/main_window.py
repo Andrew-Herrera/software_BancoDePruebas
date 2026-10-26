@@ -207,11 +207,20 @@ class MainWindow(QMainWindow):
 
     def actualizar_indicador_status(self):
         if not hasattr(self, 'lbl_st_v'): return
-        if self.config.get('demo_mode', False):
+        
+        is_demo = self.config.get('demo_mode', True)
+        
+        # Evaluar el estado real de la conexión del hardware
+        driver_connected = False
+        if hasattr(self, 'controller') and self.controller:
+            if hasattr(self.controller, 'driver') and self.controller.driver:
+                driver_connected = self.controller.driver.is_connected
+
+        if is_demo:
             self.lbl_st_v.setText(self.t.get("demo_lbl", "MODO DEMO"))
             self.lbl_st_v.setStyleSheet("color: #FF9800; font-weight: bold; font-size: 14px;")
-        elif self.config.get('hardware_connected', True): 
-            self.lbl_st_v.setText(self.t.get("connected", "Conectado"))
+        elif driver_connected:
+            self.lbl_st_v.setText(self.t.get("connected", "CONECTADO"))
             self.lbl_st_v.setStyleSheet("color: #4CAF50; font-weight: bold; font-size: 14px;")
         else:
             self.lbl_st_v.setText(self.t.get("disconnected", "DESCONECTADO"))
@@ -284,7 +293,7 @@ class MainWindow(QMainWindow):
                 pass
 
     def open_config(self):
-        dialog = ConfigDialog(self, self.config, self.t)
+        dialog = ConfigDialog(self, self.config, self.t, controller=self.controller)
         dialog.move(self.geometry().center() - dialog.rect().center())
         if dialog.exec():
             self.config = dialog.config
@@ -340,54 +349,64 @@ class MainWindow(QMainWindow):
 
     def start_test(self):
         mode = self.tabs.currentIndex()
+        
+        # Extracción de parámetros
         v_start_val = self._get_safe_param(self.v_start, float, -0.2)
         v_stop_val = self._get_safe_param(self.v_stop, float, 1.2)
         samples_val = self._get_safe_param(self.samples, int, 100)
+        delay_val = self._get_safe_param(self.delay, float, 0.05)
+        compliance_val = self._get_safe_param(self.sp_comp, float, 0.05)
+        nplc_val = self._get_safe_param(self.sp_nplc, float, 1.0)
         
+        v_bias_val = self._get_safe_param(self.v_bias, float, 0.0) if mode == 1 else 0.0
+        n_swp = self._get_safe_param(self.n_sweeps, int, 1) if mode == 0 else 1
+        
+        # Validación Integral Estricta
         if self.config.get("strict_validation", True):
-            if v_start_val >= 0 or samples_val < 100:
+            errores = []
+            if not (-2.0 <= v_start_val <= 20.0) or not (-2.0 <= v_stop_val <= 20.0):
+                errores.append("- Las tensiones deben estar dentro del rango [-2.0 20].")
+            if compliance_val <= 0 or compliance_val > 1.05:
+                errores.append("- La corriente de compliance debe ser positiva y máxima 1.05A.")
+            if samples_val < 2 or samples_val > 2500:
+                errores.append("- El número de muestras debe ser entre 2 y 2500.")
+            if delay_val < 0.05:
+                errores.append("- El delay mínimo para visualización segura es 0.05s.")
+            if mode == 1 and not (-2.0 <= v_bias_val <= 20.0):
+                errores.append("- La tensión de estrés excede los límites físicos.")
+            if n_swp < 1:
+                errores.append("- Los ciclos o barridos deben ser al menos 1.")
+                
+            if errores:
                 from PySide6.QtWidgets import QMessageBox
-                self.show_alert(
-                    QMessageBox.Icon.Warning, 
-                    "Validación Metrológica", 
-                    "La Validación Estricta está ACTIVA.\n\n"
-                    "• El Voltaje Inicial debe ser negativo (< 0 V).\n"
-                    "• Las muestras deben ser al menos 100.\n\n"
-                    "Desactive la validación en Configuración si requiere evadir la regla."
-                )
+                mensaje = "Validación Metrológica Fallida:\n\n" + "\n".join(errores)
+                self.show_alert(QMessageBox.Icon.Warning, "Validación", mensaje)
                 return
 
         params = {
             "v_start": v_start_val,
             "v_stop": v_stop_val,
             "samples": samples_val,
-            "delay": self._get_safe_param(self.delay, float, 0.05),
-            "compliance": self._get_safe_param(self.sp_comp, float, 0.05),
-            "nplc": self._get_safe_param(self.sp_nplc, float, 1.0),
+            "delay": delay_val,
+            "compliance": compliance_val,
+            "nplc": nplc_val,
             "hysteresis": self.chk_hist.isChecked()
         }
-        
-        if mode == 0: 
-            n_swp = self._get_safe_param(self.n_sweeps, int, 1)
-            # Para barrido rápido, si pide 10 y hay histéresis, son 5 ciclos.
+
+        if mode == 0:
             params["n_cycles"] = max(1, n_swp // 2) if params["hysteresis"] else n_swp
             params["interval"] = self._get_safe_param(self.int_sweeps, float, 5.0)
             params["stress_mode"] = False
             params["v_bias"] = 0.0
-            
-            self.total_sweeps_expected = params["n_cycles"] * (2 if params["hysteresis"] else 1)
-        else: 
+        else:
             dur_hrs = self._get_safe_param(self.dur_hrs, float, 1.0)
             b_per_hr = self._get_safe_param(self.b_per_hr, int, 10)
-            
-            # Para estrés, los ciclos (tomas de medición) por hora * horas
             params["n_cycles"] = int(dur_hrs * b_per_hr)
-            # El intervalo de estrés se calcula en segundos según los barridos por hora
             params["interval"] = 3600.0 / b_per_hr if b_per_hr > 0 else 0.0
             params["stress_mode"] = True
-            params["v_bias"] = self._get_safe_param(self.v_bias, float, 0.0)
-            
-            self.total_sweeps_expected = params["n_cycles"] * (2 if params["hysteresis"] else 1)
+            params["v_bias"] = v_bias_val
+
+        self.total_sweeps_expected = params["n_cycles"] * (2 if params["hysteresis"] else 1)
         
         irr_text = self.cb_irr.currentText()
         params['irradiance'] = 1000.0 if "1000" in irr_text else (500.0 if "500" in irr_text else (100.0 if "100" in irr_text else 0.0))
@@ -395,7 +414,7 @@ class MainWindow(QMainWindow):
         
         self.toggle_ui(True)
         self.clear_plot()
-        
+
         if self.controller:
             self.worker = self.controller.start_sweep_execution(params, self)
             if self.worker:
@@ -540,3 +559,15 @@ class MainWindow(QMainWindow):
         box.setText(str(message))
         box.setStandardButtons(QMessageBox.StandardButton.Ok)
         box.exec()
+
+    def closeEvent(self, event):
+        """Intercepta el cierre de la ventana para garantizar el apagado seguro."""
+        if self.worker and self.worker.isRunning():
+            self.worker.stop()
+            self.worker.wait()
+            
+        if self.controller and hasattr(self.controller, 'driver'):
+            if self.controller.driver:
+                self.controller.driver.close_session()
+                
+        event.accept()

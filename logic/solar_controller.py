@@ -22,12 +22,32 @@ class SolarController:
         self.active_worker = None
 
     def start_sweep_execution(self, params: dict, parent_ui=None):
-        """Instancia el worker de adquisición. Delega el inicio a la vista."""
-        compliance = float(params.get("compliance", 0.05))
-        if hasattr(self, 'driver') and self.driver and getattr(self.driver, 'is_connected', False):
-            self.driver.set_protection(compliance=compliance)
+        """Prepara el hardware y crea el worker de adquisición."""
 
-        self.active_worker = InstrumentWorker(controller=self, params=params, parent=parent_ui)
+        config = self.file_manager.load_json_config()
+        demo_mode = config.get("demo_mode", True)
+
+        if not demo_mode:
+            if not self.driver or not self.driver.is_connected:
+                raise RuntimeError(
+                    "La Keithley 2401 no está conectada. "
+                    "Conecta y verifica el instrumento antes de iniciar."
+                )
+
+            compliance = float(params.get("compliance", 0.05))
+            nplc = float(params.get("nplc", 1.0))
+
+            self.driver.set_protection(
+                compliance=compliance,
+                nplc=nplc
+            )
+
+        self.active_worker = InstrumentWorker(
+            controller=self,
+            params=params,
+            parent=parent_ui
+        )
+
         return self.active_worker
 
     def calculate_metrics(self, v_list: list, i_list: list, area_cm2: float, irradiance: float) -> dict:
