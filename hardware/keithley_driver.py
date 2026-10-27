@@ -1,4 +1,5 @@
 # hardware/keithley_driver.py
+# corregiones de comunicacion
 
 import math
 import re
@@ -8,7 +9,7 @@ import pyvisa
 
 
 class KeithleyDriver:
-    """Controlador para Keithley 2401 mediante VISA y GPIB."""
+    """Controlador Keithley 2401 vía VISA a través de ugpibd/VXI-11."""
 
     def __init__(self, gpib_id: str = "24"):
         self.gpib_id = str(gpib_id).strip()
@@ -24,7 +25,7 @@ class KeithleyDriver:
 
         self.timeout_ms = 5000
         self.resource_string = (
-            f"GPIB0::{self.gpib_id}::INSTR"
+            f"TCPIP::localhost,9010::gpib0,{self.gpib_id}::INSTR"
         )
 
     def _validate_identity(self, idn: str) -> None:
@@ -53,7 +54,7 @@ class KeithleyDriver:
         ):
             raise RuntimeError(
                 "La Keithley 2401 no está conectada. "
-                "Ejecuta connect() y verifica la dirección GPIB."
+                "Ejecuta connect() y verifica que ugpibd esté activo y la dirección GPIB sea correcta."
             )
 
     @staticmethod
@@ -77,8 +78,8 @@ class KeithleyDriver:
 
     def connect(self) -> bool:
         """
-        Abre la comunicación GPIB, identifica el modelo y
-        prepara el instrumento con la salida apagada.
+        Abre la comunicación vía ugpibd/VXI-11, identifica el modelo
+        y prepara el instrumento con la salida apagada.
         """
 
         self.last_error = ""
@@ -102,9 +103,9 @@ class KeithleyDriver:
                 # Backend PyVISA-Py.
                 self.rm = pyvisa.ResourceManager("@py")
 
-            # Dirección GPIB: para tu equipo, GPIB0::24::INSTR.
+            # Recurso VXI-11 ofrecido localmente por ugpibd; gpib_id es la dirección GPIB del instrumento.
             self.resource_string = (
-                f"GPIB0::{self.gpib_id}::INSTR"
+                f"TCPIP::localhost,9010::gpib0,{self.gpib_id}::INSTR"
             )
 
             self.device = self.rm.open_resource(
