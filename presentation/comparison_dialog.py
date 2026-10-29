@@ -47,7 +47,7 @@ class ComparisonDialog(QDialog):
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["Sustrato / Celda", "Voc[V]", "Isc[mA]", "Jsc[mA/cm²]", "FF[%]", "η[%]", "Fecha"])
         
-        self.tree.setColumnWidth(0, 450)
+        self.tree.setColumnWidth(0, 400)
         self.tree.setColumnWidth(1, 75)
         self.tree.setColumnWidth(2, 75)
         self.tree.setColumnWidth(3, 85)
@@ -99,8 +99,10 @@ class ComparisonDialog(QDialog):
             holder = row.get("holder_id", "Desconocido")
             celda = row.get("cell_num", 0)
             irr = row.get("irradiancia_objetivo", 1000.0)
-            temp = row.get("temperatura_avg", 25.0)
+            t_amb = row.get("temperatura_amb", 25.0)
+            t_obj = row.get("temperatura_obj", 25.0)
             notas = row.get("notas", "Sin notas")
+            fecha_minuto = str(row.get("fecha_hora", ""))
             
             fecha_minuto = str(row.get("fecha_hora", ""))[:16] 
             group_key = f"{holder}_C{celda}_{fecha_minuto}"
@@ -108,7 +110,7 @@ class ComparisonDialog(QDialog):
             if group_key not in groups:
                 parent_item = QTreeWidgetItem()
                 # TÍTULO LIMPIO (Sin fecha aquí)
-                parent_item.setText(0, f"{holder} | Celda {celda} ({irr} W/m² - {temp} °C)")
+                parent_item.setText(0, f"{holder} Celda {celda} | ({irr} W/m² - T.Amb: {t_amb}°C - T.Sup: {t_obj}°C)")
                 parent_item.setFlags(parent_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                 parent_item.setCheckState(0, Qt.CheckState.Unchecked)
                 

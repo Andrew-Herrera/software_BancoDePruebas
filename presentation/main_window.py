@@ -51,7 +51,7 @@ class MainWindow(QMainWindow):
         self.top_bar.addStretch()
         
         self.btn_compare = QPushButton()
-        self.btn_cfg = QPushButton("⚙")
+        self.btn_cfg = QPushButton("")
         self.btn_export = QPushButton()
         
         self.btn_compare.setFixedSize(140, 38)
@@ -66,14 +66,14 @@ class MainWindow(QMainWindow):
         self.top_bar.addWidget(self.btn_cfg)
         self.top_bar.addWidget(self.btn_export)
         self.main_ly.addLayout(self.top_bar)
-
+        
         self.work_area = QHBoxLayout()
+        
         self.scroll_left = QScrollArea()
         self.scroll_left.setWidgetResizable(True)
         self.scroll_left.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll_left.setFixedWidth(275)
         self.scroll_left.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        
         self.scroll_left_widget = QWidget()
         self.left_panel = QVBoxLayout(self.scroll_left_widget)
         self.left_panel.setContentsMargins(0, 0, 5, 0)
@@ -105,9 +105,11 @@ class MainWindow(QMainWindow):
         self.f_common.addRow(self.lbl_comp, self.sp_comp)
         self.f_common.addRow(self.lbl_nplc, self.sp_nplc)
         self.f_common.addRow(self.chk_hist)
+        
         self.left_panel.addWidget(self.group_common)
-
+        
         self.tabs = QTabWidget()
+        
         self.tab_fast = QWidget()
         self.ly_fast = QFormLayout(self.tab_fast)
         self.n_sweeps = self._create_input("10")
@@ -127,13 +129,13 @@ class MainWindow(QMainWindow):
         self.ly_stress.addRow(self.lbl_bph, self.b_per_hr)
         self.ly_stress.addRow(self.lbl_vbias, self.v_bias)
         self.tabs.addTab(self.tab_stress, "")
+        
         self.left_panel.addWidget(self.tabs)
-
-        self.inputs = [self.cb_irr, self.v_start, self.v_stop, self.samples, self.delay, 
-                       self.sp_comp, self.sp_nplc, self.chk_hist, self.n_sweeps, 
+        
+        self.inputs = [self.cb_irr, self.v_start, self.v_stop, self.samples, self.delay,
+                       self.sp_comp, self.sp_nplc, self.chk_hist, self.n_sweeps,
                        self.int_sweeps, self.dur_hrs, self.b_per_hr, self.v_bias, self.tabs]
         
-        # Etiqueta de tiempo restaurada
         self.lbl_time = QLabel("Tiempo est.: 0.00 min")
         self.lbl_time.setStyleSheet("font-weight: bold; color: #1E88E5; font-size: 14px;")
         
@@ -147,16 +149,31 @@ class MainWindow(QMainWindow):
         
         self.scroll_left.setWidget(self.scroll_left_widget)
         self.work_area.addWidget(self.scroll_left, 0)
-
+        
         self.plot_container = QVBoxLayout()
         self.plot_container.setContentsMargins(5, 0, 5, 0)
-
+        
+        # --- NUEVO: Indicador de Progreso (Arriba a la izquierda) ---
+        self.lbl_progreso = QLabel("")
+        self.lbl_progreso.setStyleSheet("font-weight: bold; color: #1E88E5; font-size: 16px; margin-bottom: 2px; margin-left: 5px;")
+        self.plot_container.addWidget(self.lbl_progreso)
+        # -------------------------------------------------------------
+        
         self.plot_widget = pg.PlotWidget()
         self.plot_widget.showGrid(x=True, y=True, alpha=0.3)
         self.plot_widget.getPlotItem().hideButtons()
         self.plot_container.addWidget(self.plot_widget)
         
         self.bottom_tools_ly = QHBoxLayout()
+        
+        self.lbl_temp_amb = QLabel("T.ambiental: -- °C")
+        self.lbl_temp_obj = QLabel("T.superficie: -- °C")
+        estilo_temp = "font-weight: bold; color: #E64A19; font-size: 14px; margin-right: 15px;"
+        self.lbl_temp_amb.setStyleSheet(estilo_temp)
+        self.lbl_temp_obj.setStyleSheet(estilo_temp)
+        
+        self.bottom_tools_ly.addWidget(self.lbl_temp_amb)
+        self.bottom_tools_ly.addWidget(self.lbl_temp_obj)
         self.bottom_tools_ly.addStretch()
         
         self.btn_gestor = QPushButton()
@@ -173,10 +190,11 @@ class MainWindow(QMainWindow):
         
         self.bottom_tools_ly.addWidget(self.btn_gestor)
         self.bottom_tools_ly.addWidget(self.btn_autorange)
+        
         self.plot_container.addLayout(self.bottom_tools_ly)
         self.work_area.addLayout(self.plot_container, 1)
         self.main_ly.addLayout(self.work_area)
-
+        
         # Conectar eventos de tiempo
         for w in [self.samples, self.delay, self.n_sweeps, self.int_sweeps, self.dur_hrs, self.b_per_hr]:
             w.textChanged.connect(self.recalculate_time)
@@ -364,15 +382,15 @@ class MainWindow(QMainWindow):
         # Validación Integral Estricta
         if self.config.get("strict_validation", True):
             errores = []
-            if not (-2.0 <= v_start_val <= 20.0) or not (-2.0 <= v_stop_val <= 20.0):
-                errores.append("- Las tensiones deben estar dentro del rango [-2.0 20].")
+            if not (-20.0 <= v_start_val <= 20.0) or not (-20.0 <= v_stop_val <= 20.0):
+                errores.append("- Las tensiones deben estar dentro del rango [-20.0 a 20.0].")
             if compliance_val <= 0 or compliance_val > 1.05:
                 errores.append("- La corriente de compliance debe ser positiva y máxima 1.05A.")
             if samples_val < 2 or samples_val > 2500:
                 errores.append("- El número de muestras debe ser entre 2 y 2500.")
             if delay_val < 0.05:
                 errores.append("- El delay mínimo para visualización segura es 0.05s.")
-            if mode == 1 and not (-2.0 <= v_bias_val <= 20.0):
+            if mode == 1 and not (-20.0 <= v_bias_val <= 20.0):
                 errores.append("- La tensión de estrés excede los límites físicos.")
             if n_swp < 1:
                 errores.append("- Los ciclos o barridos deben ser al menos 1.")
@@ -382,7 +400,7 @@ class MainWindow(QMainWindow):
                 mensaje = "Validación Metrológica Fallida:\n\n" + "\n".join(errores)
                 self.show_alert(QMessageBox.Icon.Warning, "Validación", mensaje)
                 return
-
+                
         params = {
             "v_start": v_start_val,
             "v_stop": v_stop_val,
@@ -392,7 +410,7 @@ class MainWindow(QMainWindow):
             "nplc": nplc_val,
             "hysteresis": self.chk_hist.isChecked()
         }
-
+        
         if mode == 0:
             params["n_cycles"] = max(1, n_swp // 2) if params["hysteresis"] else n_swp
             params["interval"] = self._get_safe_param(self.int_sweeps, float, 5.0)
@@ -405,24 +423,36 @@ class MainWindow(QMainWindow):
             params["interval"] = 3600.0 / b_per_hr if b_per_hr > 0 else 0.0
             params["stress_mode"] = True
             params["v_bias"] = v_bias_val
-
+            
         self.total_sweeps_expected = params["n_cycles"] * (2 if params["hysteresis"] else 1)
         
         irr_text = self.cb_irr.currentText()
         params['irradiance'] = 1000.0 if "1000" in irr_text else (500.0 if "500" in irr_text else (100.0 if "100" in irr_text else 0.0))
         self.config["last_irr"] = params['irradiance']
         
+        # Bloqueamos la interfaz asumiendo que todo saldrá bien
         self.toggle_ui(True)
         self.clear_plot()
-
+        
         if self.controller:
-            self.worker = self.controller.start_sweep_execution(params, self)
-            if self.worker:
-                self.worker.sweep_changed.connect(self.new_sweep_line)
-                self.worker.point_received.connect(self.update_plot)
-                self.worker.finished.connect(self.on_finished)
-                self.worker.error.connect(self.on_error)
-                self.worker.start()
+            try:
+                # Intentamos iniciar la secuencia en el controlador
+                self.worker = self.controller.start_sweep_execution(params, self)
+                
+                if self.worker:
+                    self.worker.sweep_changed.connect(self.new_sweep_line)
+                    self.worker.temp_measured.connect(self.update_temperatures)
+                    self.worker.point_received.connect(self.update_plot)
+                    self.worker.finished.connect(self.on_finished)
+                    self.worker.error.connect(self.on_error)
+                    self.worker.start()
+                    
+            except Exception as e:
+                # Si el controlador rechaza la prueba (ej. hardware desconectado)
+                self.toggle_ui(False) # Desbloqueamos la interfaz inmediatamente
+                from PySide6.QtWidgets import QMessageBox
+                self.show_alert(QMessageBox.Icon.Critical, "Conexión Fallida", str(e))
+                return
 
     def toggle_ui(self, locked):
         color = "#C62828" if locked else "#2E7D32"
@@ -440,16 +470,20 @@ class MainWindow(QMainWindow):
 
     def new_sweep_line(self, sweep_idx: int, direction: str):
         mode = self.tabs.currentIndex()
-        key = f"{sweep_idx}_{direction}" 
+        key = f"{sweep_idx}_{direction}"
         
+        # NUEVO: Actualizar Etiqueta de Progreso
+        total = getattr(self, 'total_sweeps_expected', 1)
+        self.lbl_progreso.setText(f"{sweep_idx}/{total}")
+
         if mode == 0:
             # Un lote siempre agrupa 10 barridos
             batch_idx = (sweep_idx - 1) // 10
             base_idx = batch_idx * 2
             
             if self.chk_hist.isChecked():
-                # Lógica Histéresis: Todas las Idas (Fwd) del lote 10 usan el color base. 
-                # Todas las Vueltas (Rev) del lote 10 usan el color base + 1.
+                # Lógica Histéresis: Todas las Idas (Fwd) del lote usan el color base.
+                # Todas las Vueltas (Rev) del lote usan el color base + 1.
                 c_idx = base_idx if direction == "Fwd" else base_idx + 1
             else:
                 # Sin histéresis: Alternamos los dos colores asignados al lote por cada barrido
@@ -458,10 +492,10 @@ class MainWindow(QMainWindow):
             color_hex = StyleManager.CURVE_COLORS[c_idx % len(StyleManager.CURVE_COLORS)]
             color = QColor(color_hex)
         else:
-            try: 
+            try:
                 total_sweeps = float(self.dur_hrs.text()) * int(self.b_per_hr.text())
-            except ValueError: 
-                total_sweeps = 50 
+            except ValueError:
+                total_sweeps = 50
             color = self._get_heatmap_color(sweep_idx, total_sweeps)
             
         dir_short = "Fwd" if "Fwd" in direction or "ida" in direction.lower() else "Rev"
@@ -469,7 +503,7 @@ class MainWindow(QMainWindow):
         line = self.plot_widget.plot(pen=pg.mkPen(color, width=2.5), name=short_name)
         
         self.curve_metadata[key] = {
-            'line': line, 'color': color.name(), 'x': [], 'y': [], 
+            'line': line, 'color': color.name(), 'x': [], 'y': [],
             'hist': False, 'name': short_name, 'idx_real': sweep_idx
         }
 
@@ -571,3 +605,21 @@ class MainWindow(QMainWindow):
                 self.controller.driver.close_session()
                 
         event.accept()
+
+    def update_temperatures(self, sweep_idx: int, t_amb: float, t_obj: float):
+        import math
+        if not math.isnan(t_amb) and not math.isnan(t_obj):
+            self.lbl_temp_amb.setText(f"T.ambiental: {t_amb:.1f} °C")
+            self.lbl_temp_obj.setText(f"T.superficie: {t_obj:.1f} °C")
+            
+            # Guardamos las temperaturas temporales en los metadatos para la exportación
+            key = f"{sweep_idx}_Fwd"
+            if key not in self.curve_metadata:
+                key = f"{sweep_idx}_Rev"
+                
+            if key in self.curve_metadata:
+                self.curve_metadata[key]['t_amb'] = t_amb
+                self.curve_metadata[key]['t_obj'] = t_obj
+        else:
+            self.lbl_temp_amb.setText("Temperatura ambiental: -- °C")
+            self.lbl_temp_obj.setText("Temperatura superficial de holder: -- °C")

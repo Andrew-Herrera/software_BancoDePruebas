@@ -57,6 +57,9 @@ class StyleManager:
             QComboBox { min-height: 25px; font-size: 16px; padding-left: 10px; } /* Combobox de Exportación */
             QComboBox QAbstractItemView::item { min-height: 25px; padding: 10px; font-size: 16px; } /* Lista desplegable grande */
             
+            QScrollBar:vertical { width: 20px; background: #e0e0e0; }
+            QScrollBar::handle:vertical { min-height: 45px; background: #90A4AE; border-radius: 5px; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
             """
             base_style += touch_style
 

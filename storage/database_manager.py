@@ -24,7 +24,7 @@ class DatabaseManager:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             
-            # Tabla Holders (Sustratos)
+            # Tabla Holders
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS holders (
                     id TEXT PRIMARY KEY,
@@ -33,7 +33,7 @@ class DatabaseManager:
                 )
             """)
             
-            # Tabla Celdas (Ahora incluye area_cm2)
+            # Tabla Celdas
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS celdas (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,23 +45,24 @@ class DatabaseManager:
                 )
             """)
             
-            # Tabla Experimentos (Ahora incluye isc y notas)
+            # Tabla Experimentos
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS experimentos (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    celda_id INTEGER,
-                    tipo_prueba TEXT,
-                    irradiancia_objetivo REAL,
-                    voc REAL,
-                    isc REAL,
-                    jsc REAL,
-                    ff REAL,
-                    eficiencia REAL,
-                    temperatura_avg REAL DEFAULT 25.0,
-                    notas TEXT,
-                    fecha_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (celda_id) REFERENCES celdas(id)
-                )
+            CREATE TABLE IF NOT EXISTS experimentos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                celda_id INTEGER,
+                tipo_prueba TEXT,
+                irradiancia_objetivo REAL,
+                voc REAL,
+                isc REAL,
+                jsc REAL,
+                ff REAL,
+                eficiencia REAL,
+                temperatura_amb REAL DEFAULT 25.0,
+                temperatura_obj REAL DEFAULT 25.0,
+                notas TEXT,
+                fecha_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (celda_id) REFERENCES celdas(id)
+            )
             """)
             
             # Tabla Puntos (V, I, Sentido)
@@ -120,63 +121,50 @@ class DatabaseManager:
                 )
                 return cursor.lastrowid
             
-    def save_experiment_sweep(self, celda_id: int, tipo_prueba: str, irradiancia: float, metrics: dict, points: list, sentido: str = "ida", notas: str = "") -> int:
+    def save_experiment_sweep(self, celda_id: int, tipo_prueba: str, irradiancia: float, 
+                              metrics: dict, points: list, sentido: str = "ida", notas: str = "") -> int:
         """Guarda un barrido completo con todas sus métricas calculadas y notas del operador."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            
-            # Usar None en lugar de 0.0 si las analíticas fallaron o no ocurrieron
             voc = metrics.get('voc', None)
             isc = metrics.get('isc', None)
             jsc = metrics.get('jsc', None)
             ff = metrics.get('ff', None)
             eta = metrics.get('eta', None)
             
-            # 1. Guardar metadatos del experimento
+            # NUEVO: Extraer temperaturas de las métricas
+            t_amb = metrics.get('t_amb', 25.0)
+            t_obj = metrics.get('t_obj', 25.0)
+
             cursor.execute("""
-                INSERT INTO experimentos 
-                (celda_id, tipo_prueba, irradiancia_objetivo, voc, isc, jsc, ff, eficiencia, notas) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (celda_id, tipo_prueba, irradiancia, voc, isc, jsc, ff, eta, notas))
+            INSERT INTO experimentos 
+            (celda_id, tipo_prueba, irradiancia_objetivo, voc, isc, jsc, ff, eficiencia, temperatura_amb, temperatura_obj, notas) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (celda_id, tipo_prueba, irradiancia, voc, isc, jsc, ff, eta, t_amb, t_obj, notas))
             
             exp_id = cursor.lastrowid
             
-            # 2. Guardar todos los puntos coordenados (V, I)
             puntos_db = [(exp_id, p[0], p[1], sentido) for p in points]
             cursor.executemany("""
-                INSERT INTO barridos_puntos (experimento_id, voltaje, corriente, sentido)
-                VALUES (?, ?, ?, ?)
+            INSERT INTO barridos_puntos (experimento_id, voltaje, corriente, sentido)
+            VALUES (?, ?, ?, ?)
             """, puntos_db)
-            
             return exp_id
         
     def get_full_history(self) -> list:
-        """Recupera el historial completo unificando experimentos, celdas y holders."""
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
-                # Actualizado para coincidir exactamente con el esquema de la base de datos
                 query = """
-                    SELECT 
-                        e.id as exp_id, 
-                        e.tipo_prueba, 
-                        e.irradiancia_objetivo, 
-                        e.voc, 
-                        e.isc, 
-                        e.jsc, 
-                        e.ff, 
-                        e.eficiencia, 
-                        e.temperatura_avg, 
-                        e.notas,
-                        e.fecha_hora,
-                        c.posicion as cell_num,
-                        c.area_cm2, 
-                        h.id as holder_id, 
-                        h.autor 
-                    FROM experimentos e
-                    JOIN celdas c ON e.celda_id = c.id
-                    JOIN holders h ON c.holder_id = h.id
-                    ORDER BY h.id, c.posicion, e.id ASC
+                SELECT 
+                    e.id as exp_id, e.tipo_prueba, e.irradiancia_objetivo, 
+                    e.voc, e.isc, e.jsc, e.ff, e.eficiencia, 
+                    e.temperatura_amb, e.temperatura_obj, e.notas, e.fecha_hora,
+                    c.posicion as cell_num, c.area_cm2, h.id as holder_id, h.autor 
+                FROM experimentos e
+                JOIN celdas c ON e.celda_id = c.id
+                JOIN holders h ON c.holder_id = h.id
+                ORDER BY h.id, c.posicion, e.id ASC
                 """
                 cursor.execute(query)
                 return [dict(row) for row in cursor.fetchall()]
