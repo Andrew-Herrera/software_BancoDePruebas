@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QDialog
 )
 from PySide6.QtGui import QBrush, QColor
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt,QEvent
 
 from utils.text import TEXTS
 from utils.style_manager import StyleManager
@@ -17,6 +17,48 @@ from presentation.export_dialog import ExportDialog
 from presentation.comparison_dialog import ComparisonDialog
 from presentation.curves_dialog import CurvesDialog
 from presentation.touch_keyboard import TouchKeyboard
+
+class TouchPlotWidget(pg.PlotWidget):
+    """PlotWidget con soporte para zoom mediante pellizco táctil."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Preparar el área que recibe los eventos táctiles.
+        viewport = self.viewport()
+        viewport.setAttribute(
+            Qt.WidgetAttribute.WA_AcceptTouchEvents, True
+        )
+
+        # Solicitar que Qt reconozca el gesto de pellizco.
+        viewport.grabGesture(Qt.GestureType.PinchGesture)
+
+        # Interceptar los gestos recibidos por la gráfica.
+        viewport.installEventFilter(self)
+
+    def eventFilter(self, watched, event):
+        if (
+            watched is self.viewport()
+            and event.type() == QEvent.Type.Gesture
+        ):
+            pinch = event.gesture(Qt.GestureType.PinchGesture)
+
+            if pinch is not None:
+                if pinch.state() == Qt.GestureState.GestureUpdated:
+                    factor = pinch.scaleFactor()
+
+                    if factor > 0:
+                        # Abrir los dedos = acercar.
+                        # Cerrar los dedos = alejar.
+                        escala = 1.0 / factor
+
+                        view_box = self.getPlotItem().getViewBox()
+                        view_box.scaleBy((escala, escala))
+
+                event.accept(pinch)
+                return True
+
+        return super().eventFilter(watched, event)
 
 class MainWindow(QMainWindow):
     def __init__(self, controller):
@@ -157,12 +199,9 @@ class MainWindow(QMainWindow):
         self.lbl_progreso.setStyleSheet("font-weight: bold; color: #1E88E5; font-size: 16px; margin-bottom: 2px; margin-left: 5px;")
         self.plot_container.addWidget(self.lbl_progreso)
         
-        self.plot_widget = pg.PlotWidget()
+        self.plot_widget = TouchPlotWidget()
         self.plot_widget.showGrid(x=True, y=True, alpha=0.3)
         self.plot_widget.getPlotItem().hideButtons()
-        self.plot_widget.setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
-        self.plot_widget.viewport().setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
-        self.plot_widget.grabGesture(Qt.GestureType.PinchGesture)
         self.plot_container.addWidget(self.plot_widget)
         
         self.bottom_tools_ly = QHBoxLayout()
