@@ -152,16 +152,17 @@ class MainWindow(QMainWindow):
         
         self.plot_container = QVBoxLayout()
         self.plot_container.setContentsMargins(5, 0, 5, 0)
-        
-        # --- NUEVO: Indicador de Progreso (Arriba a la izquierda) ---
+
         self.lbl_progreso = QLabel("")
         self.lbl_progreso.setStyleSheet("font-weight: bold; color: #1E88E5; font-size: 16px; margin-bottom: 2px; margin-left: 5px;")
         self.plot_container.addWidget(self.lbl_progreso)
-        # -------------------------------------------------------------
         
         self.plot_widget = pg.PlotWidget()
         self.plot_widget.showGrid(x=True, y=True, alpha=0.3)
         self.plot_widget.getPlotItem().hideButtons()
+        self.plot_widget.setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
+        self.plot_widget.viewport().setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
+        self.plot_widget.grabGesture(Qt.GestureType.PinchGesture)
         self.plot_container.addWidget(self.plot_widget)
         
         self.bottom_tools_ly = QHBoxLayout()
