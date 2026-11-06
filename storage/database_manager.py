@@ -233,3 +233,28 @@ class DatabaseManager:
                 return dict(row) if row else {}
         except Exception:
             return {}
+
+    def save_calibration_data(self, data: list):
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM calibracion") 
+            cursor.executemany("""
+            INSERT INTO calibracion (numero_pasos, irradiancia_medida, corriente_sensor)
+            VALUES (?, ?, ?)
+            """, data)
+            conn.commit()
+
+    def get_calibration_data(self) -> list:
+        """Recupera la tabla de calibración actual ordenada por pasos."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                SELECT numero_pasos, irradiancia_medida, corriente_sensor 
+                FROM calibracion 
+                ORDER BY numero_pasos ASC
+                """)
+                return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            print(f"Error recuperando datos de calibración: {e}")
+            return []

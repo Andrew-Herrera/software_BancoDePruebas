@@ -125,8 +125,17 @@ class MainWindow(QMainWindow):
         self.f_common.setVerticalSpacing(4)
         
         self.cb_irr = QComboBox()
-        self.cb_irr.addItems(["1000 W/m² (1 Sol)", "500 W/m² (0.5 Sol)", "100 W/m² (0.1 Sol)", "Oscuridad"])
+        # Hacemos que el combobox permita escribir valores personalizados
+        self.cb_irr.setEditable(True)
+        # Valores sugeridos por defecto (se actualizarán tras calibrar)
+        self.cb_irr.addItems(["1000", "500", "100", "0"])
         
+        # Conectar el teclado táctil numérico al área de texto del combobox
+        line_edit = self.cb_irr.lineEdit()
+        if line_edit:
+            line_edit.mousePressEvent = lambda e: self.evaluar_despliegue_teclado(line_edit, "numeric")
+
+
         self.v_start = self._create_input("-0.200")
         self.v_stop = self._create_input("1.200")
         self.samples = self._create_input("100")
@@ -466,8 +475,11 @@ class MainWindow(QMainWindow):
             
         self.total_sweeps_expected = params["n_cycles"] * (2 if params["hysteresis"] else 1)
         
-        irr_text = self.cb_irr.currentText()
-        params['irradiance'] = 1000.0 if "1000" in irr_text else (500.0 if "500" in irr_text else (100.0 if "100" in irr_text else 0.0))
+        # Extraer irradiancia objetivo
+        try:
+            params['irradiance'] = float(self.cb_irr.currentText().strip())
+        except ValueError:
+            params['irradiance'] = 1000.0 # Fallback 1 Sol
         self.config["last_irr"] = params['irradiance']
         
         # Bloqueamos la interfaz asumiendo que todo saldrá bien
@@ -512,26 +524,40 @@ class MainWindow(QMainWindow):
         mode = self.tabs.currentIndex()
         key = f"{sweep_idx}_{direction}"
         
-        # NUEVO: Actualizar Etiqueta de Progreso
+        # Actualizar Etiqueta de Progreso
         total = getattr(self, 'total_sweeps_expected', 1)
         self.lbl_progreso.setText(f"{sweep_idx}/{total}")
-
+        
+        # =======================================================
+        # NUEVA LÓGICA: Atenuar (Hacer translúcidas) las curvas viejas
+        # =======================================================
+        import pyqtgraph as pg
+        from PySide6.QtGui import QColor
+        
+        for past_key, meta in self.curve_metadata.items():
+            past_line = meta['line']
+            past_color = QColor(meta['color'])
+            
+            # Le ponemos una transparencia (alpha de 70 sobre 255) y grosor 1
+            past_color.setAlpha(70) 
+            past_line.setPen(pg.mkPen(past_color, width=1.0))
+        # =======================================================
+        
+        # Determinar el color de la NUEVA curva
         if mode == 0:
-            # Un lote siempre agrupa 10 barridos
+            # Lógica de Barridos Rápidos (Lotes de 10)
             batch_idx = (sweep_idx - 1) // 10
             base_idx = batch_idx * 2
             
             if self.chk_hist.isChecked():
-                # Lógica Histéresis: Todas las Idas (Fwd) del lote usan el color base.
-                # Todas las Vueltas (Rev) del lote usan el color base + 1.
                 c_idx = base_idx if direction == "Fwd" else base_idx + 1
             else:
-                # Sin histéresis: Alternamos los dos colores asignados al lote por cada barrido
                 c_idx = base_idx if sweep_idx % 2 != 0 else base_idx + 1
                 
             color_hex = StyleManager.CURVE_COLORS[c_idx % len(StyleManager.CURVE_COLORS)]
             color = QColor(color_hex)
         else:
+            # Lógica de Estrés (Mapa de calor)
             try:
                 total_sweeps = float(self.dur_hrs.text()) * int(self.b_per_hr.text())
             except ValueError:
@@ -540,6 +566,9 @@ class MainWindow(QMainWindow):
             
         dir_short = "Fwd" if "Fwd" in direction or "ida" in direction.lower() else "Rev"
         short_name = f"S{sweep_idx} ({dir_short})"
+        
+        # La NUEVA curva se dibuja 100% opaca (alpha 255) y más gruesa (width 2.5)
+        color.setAlpha(255)
         line = self.plot_widget.plot(pen=pg.mkPen(color, width=2.5), name=short_name)
         
         self.curve_metadata[key] = {
@@ -591,7 +620,12 @@ class MainWindow(QMainWindow):
             color_hex = self.historical_colors[group_id]
             
             x_vals = [p[0] for p in points]
-            y_vals = [abs(p[1]) if ("Direct" in self.config.get("graph_polarity", "") or "Directa" in self.config.get("graph_polarity", "")) else p[1] for p in points]
+            es_directa = "Direct" in self.config.get("graph_polarity", "") or "Directa" in self.config.get("graph_polarity", "")
+            multiplicador = -1.0 if es_directa else 1.0
+            y_vals = [p[1] * multiplicador for p in points]
+            
+            pen = pg.mkPen(color=color_hex, width=2, style=Qt.PenStyle.DashLine)
+            
             pen = pg.mkPen(color=color_hex, width=2, style=Qt.PenStyle.DashLine)
             
             sentido_db = meta_db.get("tipo_prueba", "Ida")
@@ -619,8 +653,28 @@ class MainWindow(QMainWindow):
     def on_finished(self, curves: dict, t_stats: dict, aborted: bool):
         self.toggle_ui(False)
         self.last_results = t_stats
+        
+        # ==========================================================
+        # NUEVO: Restaurar la opacidad de todas las curvas al 100%
+        # ==========================================================
+        import pyqtgraph as pg
+        from PySide6.QtGui import QColor
+        
+        for key, meta in self.curve_metadata.items():
+            # Solo modificamos las curvas nuevas (ignoramos las del historial SQL si están cargadas)
+            if not meta.get('hist', False): 
+                line = meta['line']
+                color = QColor(meta['color'])
+                color.setAlpha(255)  # 100% de opacidad
+                line.setPen(pg.mkPen(color, width=2.0))  # Grosor estándar para fácil visualización
+        # ==========================================================
+
         if not aborted:
-            self.show_alert(QMessageBox.Icon.Information, self.t.get("alert_acq_title", "Finalizado"), self.t.get("alert_acq_msg", "Prueba concluida."))
+            self.show_alert(
+                QMessageBox.Icon.Information, 
+                self.t.get("alert_acq_title", "Finalizado"), 
+                self.t.get("alert_acq_msg", "Prueba concluida.")
+            )
 
     def on_error(self, err_msg: str):
         self.toggle_ui(False)
@@ -634,17 +688,30 @@ class MainWindow(QMainWindow):
         box.setStandardButtons(QMessageBox.StandardButton.Ok)
         box.exec()
 
-    def closeEvent(self, event):
-        """Intercepta el cierre de la ventana para garantizar el apagado seguro."""
-        if self.worker and self.worker.isRunning():
-            self.worker.stop()
-            self.worker.wait()
-            
-        if self.controller and hasattr(self.controller, 'driver'):
-            if self.controller.driver:
-                self.controller.driver.close_session()
-                
-        event.accept()
+    def disable_output(self) -> None:
+        """Intenta apagar la salida y verifica el estado real del hardware."""
+        if self.device is None:
+            self.output_enabled = False
+            return
+
+        output_off_confirmed = False
+        try:
+            self.device.write(":OUTP OFF")
+            # Consulta obligatoria para verificar
+            status = self.device.query(":OUTP?").strip().upper()
+            if status in ("0", "+0", "OFF"):
+                self.output_enabled = False
+                output_off_confirmed = True
+        except Exception as e:
+            print(f"ALERTA CRÍTICA: no se pudo confirmar el apagado de la salida: {e}")
+
+        try:
+            self.device.write(":SOUR:VOLT 0")
+        except Exception as e:
+            pass
+
+        if not output_off_confirmed:
+            self.output_enabled = None # Estado "desconocido" (evita falsos positivos)
 
     def update_temperatures(self, sweep_idx: int, t_amb: float, t_obj: float):
         import math
@@ -663,3 +730,15 @@ class MainWindow(QMainWindow):
         else:
             self.lbl_temp_amb.setText("Temperatura ambiental: -- °C")
             self.lbl_temp_obj.setText("Temperatura superficial de holder: -- °C")
+
+    def closeEvent(self, event):
+        """Intercepta el cierre de la ventana para garantizar el apagado seguro."""
+        if self.worker and self.worker.isRunning():
+            self.worker.stop()
+            self.worker.wait()
+            
+        if self.controller and hasattr(self.controller, 'driver'):
+            if self.controller.driver:
+                self.controller.driver.close_session()
+                
+        event.accept()

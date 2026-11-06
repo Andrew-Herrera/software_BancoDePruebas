@@ -72,6 +72,7 @@ class ConfigDialog(QDialog):
         self.cb_polarity.addItems(["Direct (PV - Quadrant I)", "Reverse (Quadrant III)"])
         
         self.btn_calib = QPushButton(self.t.get("btn_calib", "Protocolo de Calibración"))
+        self.btn_calib.clicked.connect(self._run_calibration_routine)
         
         f_metro.addRow("Sensor de Referencia:", self.txt_sensor)
         f_metro.addRow("Última Calibración:", self.txt_calib_date)
@@ -96,13 +97,21 @@ class ConfigDialog(QDialog):
         box_jog.addWidget(self.btn_z_up)
         
         self.txt_z_focus = self._create_input("0")
-        self.btn_save_z = QPushButton("Guardar Posición Actual como Z óptimo")
+        self.txt_motor_steps = self._create_input("3200")
+        self.btn_save_z = QPushButton("Guardar Posición Actual como Z max")
         self.btn_save_z.clicked.connect(self._save_current_z)
+        
+        # NUEVO: Selector de método de calibración
+        self.cb_calib_mode = QComboBox()
+        self.cb_calib_mode.addItems(["Tabla (Interpolación)", "Ecuación (FHL-102)"])
         
         f_cnc.addRow(self.btn_home)
         f_cnc.addRow("Control Manual Z:", box_jog)
+        f_cnc.addRow("Pasos por revolución (Micropasos):", self.txt_motor_steps)
         f_cnc.addRow("Z focal guardado (pasos):", self.txt_z_focus)
+        f_cnc.addRow("Modo de Irradiancia:", self.cb_calib_mode) # Añadido a la vista
         f_cnc.addRow(self.btn_save_z)
+        
         self.tabs.addTab(self.tab_cnc, "Óptica CNC")
 
         # --- Tab 4: UI & Preferencias ---
@@ -209,6 +218,8 @@ class ConfigDialog(QDialog):
         self.cb_strict.setChecked(self.config.get("strict_validation", True))
         
         self.txt_z_focus.setText(str(self.config.get("z_focus", 0)))
+        self.txt_motor_steps.setText(str(self.config.get("motor_steps_rev", 3200)))
+        self.cb_calib_mode.setCurrentText(self.config.get("calib_mode", "Tabla (Interpolación)"))
         
         self.cb_lang.setCurrentText(self.config.get("lang", "Español"))
         self.cb_dark.setChecked(self.config.get("dark_mode", True))
@@ -229,6 +240,11 @@ class ConfigDialog(QDialog):
             
         try: self.config["z_focus"] = int(self.txt_z_focus.text())
         except ValueError: self.config["z_focus"] = 0
+        
+        try: self.config["motor_steps_rev"] = int(self.txt_motor_steps.text())
+        except ValueError: self.config["motor_steps_rev"] = 3200
+
+        self.config["calib_mode"] = self.cb_calib_mode.currentText()
             
         self.config["graph_polarity"] = self.cb_polarity.currentText()
         self.config["strict_validation"] = self.cb_strict.isChecked()
@@ -238,3 +254,62 @@ class ConfigDialog(QDialog):
         self.config["touch_mode"] = self.cb_touch.isChecked()
         
         self.accept()
+
+    def _run_calibration_routine(self):
+        """Inicia el barrido óptico mediante el CalibrationWorker."""
+        if not self.controller or not getattr(self.controller, 'motor', None) or not getattr(self.controller, 'driver', None):
+            QMessageBox.critical(self, "Error de Hardware", "El motor o la Keithley no están inicializados.")
+            return
+            
+        try:
+            z_limit = int(self.txt_z_focus.text())
+        except ValueError:
+            QMessageBox.warning(self, "Error", "Guarde primero un límite Z válido focalizado en la celda.")
+            return
+            
+        if z_limit <= 0:
+            QMessageBox.warning(self, "Error", "El límite Z debe ser mayor a cero para realizar un barrido.")
+            return
+
+        reply = QMessageBox.question(
+            self, "Calibración Óptica", 
+            f"¿Desea iniciar la rutina de calibración?\n\nEl sensor BPW20RF debe estar conectado. El motor escaneará desde Home hasta {z_limit} pasos.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            from PySide6.QtWidgets import QProgressDialog
+            from logic.calibration_worker import CalibrationWorker
+            
+            # Crear barra de progreso modal
+            self.progress_dlg = QProgressDialog("Inicializando...", "Cancelar", 0, z_limit, self)
+            self.progress_dlg.setWindowTitle("Calibración Óptica")
+            self.progress_dlg.setWindowModality(Qt.WindowModality.WindowModal)
+            self.progress_dlg.setMinimumDuration(0)
+            
+            # Instanciar el worker
+            self.calib_worker = CalibrationWorker(self.controller, z_limit=z_limit, step_increment=800)
+            
+            # Conectar señales
+            self.calib_worker.progress.connect(
+                lambda curr, total, msg: (self.progress_dlg.setValue(curr), self.progress_dlg.setLabelText(msg))
+            )
+            self.calib_worker.finished.connect(self._on_calibration_finished)
+            self.calib_worker.error.connect(
+                lambda e: QMessageBox.critical(self, "Error de Calibración", f"Fallo durante el barrido:\n{e}")
+            )
+            self.progress_dlg.canceled.connect(self.calib_worker.stop)
+            
+            # Iniciar
+            self.calib_worker.start()
+
+    def _on_calibration_finished(self, success: bool):
+        self.progress_dlg.close()
+        if success:
+            from datetime import datetime
+            hoy = datetime.now().strftime("%Y-%m-%d")
+            self.txt_calib_date.setText(hoy)
+            QMessageBox.information(self, "Calibración Exitosa", "La tabla de irradiancia ha sido mapeada y guardada correctamente.")
+            self._save_config() # Guardamos la fecha en la UI
+        else:
+            QMessageBox.warning(self, "Calibración Cancelada", "El barrido óptico fue interrumpido.")

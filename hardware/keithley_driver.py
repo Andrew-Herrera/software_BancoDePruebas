@@ -1,10 +1,8 @@
 # hardware/keithley_driver.py
-# corregiones de comunicacion
 
 import math
 import re
 import time
-
 import pyvisa
 
 
@@ -356,37 +354,29 @@ class KeithleyDriver:
             ) from e
 
     def disable_output(self) -> None:
-        """Intenta apagar la salida, incluso ante un error."""
-
+        """Intenta apagar la salida y verifica el estado real del hardware."""
         if self.device is None:
             self.output_enabled = False
             return
 
         output_off_confirmed = False
-
-        # Priorizar apagar la salida.
         try:
             self.device.write(":OUTP OFF")
-            self.output_enabled = False
-            output_off_confirmed = True
+            # Consulta obligatoria para verificar
+            status = self.device.query(":OUTP?").strip().upper()
+            if status in ("0", "+0", "OFF"):
+                self.output_enabled = False
+                output_off_confirmed = True
         except Exception as e:
-            print(
-                "ALERTA CRÍTICA: no se pudo confirmar "
-                f"el apagado de la salida: {e}"
-            )
+            print(f"ALERTA CRÍTICA: no se pudo confirmar el apagado de la salida: {e}")
 
-        # Intentar llevar el nivel programado a cero.
         try:
             self.device.write(":SOUR:VOLT 0")
         except Exception as e:
-            print(
-                f"ALERTA: no se pudo establecer 0 V: {e}"
-            )
+            pass
 
         if not output_off_confirmed:
-            # No afirmar que la salida está apagada si no
-            # se pudo enviar el comando.
-            self.output_enabled = None
+            self.output_enabled = None # Estado "desconocido" (evita falsos positivos)
 
     def close_session(self) -> None:
         """Apaga la salida y cierra la sesión VISA."""

@@ -9,45 +9,45 @@ from storage.file_manager import FileManager
 from hardware.keithley_driver import KeithleyDriver
 from logic.solar_controller import SolarController
 from presentation.main_window import MainWindow
+from hardware.motor_driver import MotorDriver          
+from hardware.thermal_sensor import ThermalSensor
 
 
 def main():
-    # 1. Definir BASE_DIR y asegurar que el directorio de trabajo sea el de este script
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     os.chdir(BASE_DIR)
 
-    # 2. Inicializar la aplicación Qt
     app = QApplication(sys.argv)
-    app.setStyle("Fusion")  # Base limpia para aplicar nuestro QSS (StyleManager)
+    app.setStyle("Fusion") 
 
-    # 3. Inicializar la Capa de Almacenamiento y cargar configuraciones
     DATA_DIR = os.path.join(BASE_DIR, "data")
     DB_PATH = os.path.join(DATA_DIR, "solar_project.db")
     
     file_manager = FileManager(data_dir=DATA_DIR)
     db_manager = DatabaseManager(db_path=DB_PATH)
-    
-    # Carga de preferencias antes de inicializar el hardware
+
     config = file_manager.load_json_config()
-    gpib_id = config.get("gpib_id", "10")
+    gpib_id = config.get("gpib_id", "24")
+    pasos_rev = int(config.get("motor_steps_rev", 3200))
 
-    # 4. Inicializar la Capa de Hardware utilizando el GPIB configurado
+    # 1. Inicializar Hardware
     keithley_driver = KeithleyDriver(gpib_id=gpib_id)
+    motor = MotorDriver(pulsos_por_vuelta=pasos_rev, vueltas_maximas=23.5)
+    thermal = ThermalSensor(bus_number=1)                            
 
-    # 5. Inicializar la Capa de Lógica de Negocio (Logic Layer)
+    # 2. Inyectar en el controlador central
     controller = SolarController(
         db_manager=db_manager, 
         file_manager=file_manager,
-        keithley_driver=keithley_driver
+        keithley_driver=keithley_driver,
+        motor=motor,                                                 
+        thermal=thermal                                              
     )
 
-    # 6. Inicializar la Capa de Presentación (Presentation Layer)
     window = MainWindow(controller=controller)
     window.show()
 
-    # 7. Ejecutar el bucle principal de eventos de la aplicación
     sys.exit(app.exec())
-
 
 if __name__ == "__main__":
     main()

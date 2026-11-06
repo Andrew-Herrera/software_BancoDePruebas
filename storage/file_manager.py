@@ -41,7 +41,7 @@ class FileManager:
             
             # Preferencias de conexión y hardware
             "demo_mode": True,
-            "gpib_id": "10",
+            "gpib_id": "24",
             "baud": "9600",
             "termination": "\\r\\n",
             "term_route": "Front (FRONT)",
@@ -51,6 +51,7 @@ class FileManager:
             "sensor": "BPW20RF",
             "last_calib": "2026-04-09",
             "remind_days": 10,
+            "motor_steps_rev": 3200,   
             "graph_polarity": "Direct (PV - Quadrant I)",
             "strict_validation": True,
             "lang": "Español",

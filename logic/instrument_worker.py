@@ -110,12 +110,15 @@ class InstrumentWorker(QThread):
             motor = getattr(self.controller, "motor", None)
             if motor is not None:
                 motor.home()
-                config = self.controller.file_manager.load_json_config()
-                z_focus = float(config.get("z_focus", 0) or 0)
-                if not math.isfinite(z_focus):
-                    raise ValueError("La posición focal Z debe ser finita.")
-                if z_focus > 0:
-                    motor.move_to_z(z_focus)
+                # Leemos la irradiancia objetivo de los parámetros
+                target_irr = float(self.params.get("irradiance", 1000.0))
+                
+                # Calculamos cuántos pasos necesitamos usando la lógica del controlador
+                target_steps = self.controller.calculate_motor_steps(target_irr)
+                
+                if target_steps > 0:
+                    print(f"Moviendo motor a {target_steps} pasos para {target_irr} W/m2")
+                    motor.move_to_z(target_steps)
                     
             # Preparar las secuencias de barrido.
             v_fwd = np.linspace(v_start, v_stop, samples)
@@ -144,13 +147,17 @@ class InstrumentWorker(QThread):
                         break
                         
                     if self.is_demo:
+                        # En modo demo, usamos el voltaje programado (ideal)
                         i_meas = self._generate_demo_point(float(v))
+                        v_real = float(v)
                         self._wait_interval(delay)
                     else:
+                        # En hardware real, extraemos v_meas y lo usamos
                         v_meas, i_meas = driver.measure_iv_point(float(v), delay)
-                        
-                    current_sweep_data.append((float(v), float(i_meas)))
-                    self.point_received.emit(sweep_idx, "Fwd", float(v), float(i_meas))
+                        v_real = float(v_meas)
+
+                    current_sweep_data.append((v_real, float(i_meas)))
+                    self.point_received.emit(sweep_idx, "Fwd", v_real, float(i_meas)) # O "Rev" en la vuelta
                     
                 # Guardar sólo barridos completados.
                 if self.is_running and current_sweep_data:
@@ -181,12 +188,14 @@ class InstrumentWorker(QThread):
                             
                         if self.is_demo:
                             i_meas = self._generate_demo_point(float(v))
+                            v_real = float(v)
                             self._wait_interval(delay)
                         else:
                             v_meas, i_meas = driver.measure_iv_point(float(v), delay)
+                            v_real = float(v_meas)
                             
-                        current_sweep_data.append((float(v), float(i_meas)))
-                        self.point_received.emit(sweep_idx, "Rev", float(v), float(i_meas))
+                        current_sweep_data.append((v_real, float(i_meas)))
+                        self.point_received.emit(sweep_idx, "Rev", v_real, float(i_meas)) 
                         
                     if self.is_running and current_sweep_data:
                         all_curves[sweep_idx] = {

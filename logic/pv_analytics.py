@@ -4,73 +4,66 @@ import random
 from typing import Dict, Any
 
 def calculate_pv_parameters(
-    voltage: list, 
-    current: list, 
-    area_cm2: float = 0.09, 
-    irradiance_w_m2: float = 1000.0
+    voltage: list, current: list, area_cm2: float = 0.09, 
+    irradiance_w_m2: float = 1000.0, polarity: str = "Direct"
 ) -> Dict[str, float]:
-    """
-    Capa Analítica: Calcula las figuras de mérito fotovoltaicas.
-    Soporta polaridad invertida, interpola cruces por cero y preserva valores ultra bajos.
-    """
     nan_dict = {"voc": np.nan, "isc": np.nan, "jsc": np.nan, "ff": np.nan, "eta": np.nan, "pmax": np.nan}
-    
     try:
         v_raw = np.array(voltage, dtype=float)
         i_raw = np.array(current, dtype=float)
         
-        if len(v_raw) < 5 or len(i_raw) < 5:
-            return nan_dict
+        if len(v_raw) < 5 or len(i_raw) < 5: return nan_dict
+        
+        # 1. Convención de Corriente Única Explícita
+        # Si polarity es Direct (Generador en Cuadrante I de la gráfica), I debe ser positiva.
+        # Físicamente la celda entrega corriente, por lo que SMU mide negativo. Lo invertimos.
+        if polarity.startswith("Direct"):
+            i_calc = -i_raw 
+        else:
+            i_calc = i_raw
+            
+        # 2. Búsqueda secuencial de cruces por cero (evita errores por ordenamiento)
+        voc, isc = np.nan, np.nan
+        
+        # Buscar Voc (cruce de corriente por 0)
+        for i in range(len(i_calc) - 1):
+            if (i_calc[i] * i_calc[i+1]) <= 0:
+                # Interpolación lineal simple entre puntos adyacentes
+                m = (v_raw[i+1] - v_raw[i]) / (i_calc[i+1] - i_calc[i]) if (i_calc[i+1] - i_calc[i]) != 0 else 0
+                voc = v_raw[i] + m * (0 - i_calc[i])
+                break
+                
+        # Buscar Isc (cruce de voltaje por 0)
+        for i in range(len(v_raw) - 1):
+            if (v_raw[i] * v_raw[i+1]) <= 0:
+                m = (i_calc[i+1] - i_calc[i]) / (v_raw[i+1] - v_raw[i]) if (v_raw[i+1] - v_raw[i]) != 0 else 0
+                isc = i_calc[i] + m * (0 - v_raw[i])
+                break
 
-        # 1. Pmax y Eficiencia (Independientes de los cruces por cero)
-        # Se calcula la potencia absoluta en todos los cuadrantes para soportar cualquier polaridad
-        p_array = np.abs(v_raw * i_raw)
-        pmax = float(np.max(p_array))
+        jsc = (isc * 1000.0) / area_cm2 if not np.isnan(isc) else np.nan
+
+        # 3. Potencia máxima delimitada al cuadrante de generación fotovoltaica
+        # Solo calculamos potencia donde V e I_calc son ambos positivos (Generación PV)
+        power_array = v_raw * i_calc
+        generative_power = power_array[(v_raw >= 0) & (i_calc >= 0)]
+        
+        pmax = float(np.max(generative_power)) if len(generative_power) > 0 else np.nan
         
         p_in = (irradiance_w_m2 / 10000.0) * area_cm2
-        eta = (pmax / p_in) * 100.0 if p_in > 0 else 0.0
-
-        # 2. Corriente de Cortocircuito (Isc) mediante interpolación real
-        # Ordenamos respecto al voltaje para garantizar una interpolación matemática válida
-        sort_v_idx = np.argsort(v_raw)
-        v_sorted = v_raw[sort_v_idx]
-        i_sorted_by_v = i_raw[sort_v_idx]
-
-        has_isc = (np.min(v_sorted) * np.max(v_sorted)) <= 0
-        if has_isc:
-            isc = np.abs(np.interp(0.0, v_sorted, i_sorted_by_v))
-            jsc = (isc * 1000.0) / area_cm2
-        else:
-            isc, jsc = np.nan, np.nan
-
-        # 3. Voltaje de Circuito Abierto (Voc) mediante interpolación real
-        # Ordenamos respecto a la corriente para interpolar el voltaje en I=0
-        sort_i_idx = np.argsort(i_raw)
-        i_sorted = i_raw[sort_i_idx]
-        v_sorted_by_i = v_raw[sort_i_idx]
-
-        has_voc = (np.min(i_sorted) * np.max(i_sorted)) <= 0
-        if has_voc:
-            voc = np.abs(np.interp(0.0, i_sorted, v_sorted_by_i))
-        else:
-            voc = np.nan
-
-        # 4. Factor de Llenado (FF)
-        # Solo calculable si existen cruces por cero válidos
-        if not np.isnan(voc) and not np.isnan(isc) and (voc * isc) > 0:
-            ff = (pmax / (voc * isc)) * 100.0
-        else:
-            ff = np.nan
+        eta = (pmax / p_in) * 100.0 if (p_in > 0 and not np.isnan(pmax)) else np.nan
+        
+        # 4. Factor de Llenado Físicamente Consistente
+        ff = np.nan
+        if not np.isnan(voc) and not np.isnan(isc) and not np.isnan(pmax):
+            if (voc * isc) > 0:
+                ff = (pmax / (voc * isc)) * 100.0
+                if ff > 100.0 or ff < 0: 
+                    ff = np.nan # Límite físico: celda ideal = 100%
 
         return {
-            "voc": float(voc) if not np.isnan(voc) else np.nan,
-            "isc": float(isc) if not np.isnan(isc) else np.nan,
-            "jsc": float(jsc) if not np.isnan(jsc) else np.nan,
-            "ff": float(ff) if not np.isnan(ff) else np.nan,
-            "eta": float(eta) if not np.isnan(eta) else np.nan,
-            "pmax": float(pmax) if not np.isnan(pmax) else np.nan
+            "voc": float(voc), "isc": float(isc), "jsc": float(jsc),
+            "ff": float(ff), "eta": float(eta), "pmax": float(pmax)
         }
-        
     except Exception as e:
         print(f"Error Analítico PV: {e}")
         return nan_dict

@@ -160,6 +160,8 @@ class ExportDialog(QDialog):
                 
                 # EJECUCIÓN MATEMÁTICA ANTES DE GUARDAR
                 metrics = self.controller.calculate_metrics(v_list, i_list, area, irr)
+                metrics['t_amb'] = meta.get('t_amb', 25.0)
+                metrics['t_obj'] = meta.get('t_obj', 25.0)
                 
                 is_hys = "Rev" in key
                 tipo_prueba = "Histéresis (Vuelta)" if is_hys else "Curva J-V (Ida)"
